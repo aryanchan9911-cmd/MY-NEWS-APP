@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Global Tech & Emergency Alert Reader</title>
+  <style>
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: #1e293b;
+      --accent-color: #38bdf8;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border-color: #334155;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: var(--bg-color); color: var(--text-main); padding-bottom: 60px; }
+
+    header {
+      background-color: var(--card-bg);
+      padding: 1rem;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    }
+
+    header h1 { font-size: 1.25rem; color: var(--accent-color); }
+    .status-bar { font-size: 0.75rem; color: var(--text-muted); text-align: right; }
+
+    nav {
+      display: flex;
+      overflow-x: auto;
+      background-color: var(--card-bg);
+      border-bottom: 1px solid var(--border-color);
+      padding: 0.5rem;
+      gap: 0.5rem;
+    }
+
+    nav button {
+      background: none;
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      padding: 0.5rem 1rem;
+      border-radius: 20px;
+      white-space: nowrap;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s ease;
+    }
+
+    nav button.active {
+      background-color: var(--accent-color);
+      color: #0f172a;
+      border-color: var(--accent-color);
+      font-weight: bold;
+    }
+
+    main { padding: 1rem; max-width: 900px; margin: 0 auto; }
+
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .btn-refresh {
+      background-color: var(--card-bg);
+      color: var(--accent-color);
+      border: 1px solid var(--accent-color);
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+
+    .news-grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+
+    @media (min-width: 640px) {
+      .news-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.15s ease;
+    }
+
+    .card:hover { transform: translateY(-2px); }
+
+    .card-tag {
+      font-size: 0.7rem;
+      font-weight: bold;
+      text-transform: uppercase;
+      color: var(--accent-color);
+      margin-bottom: 0.5rem;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      line-height: 1.4;
+      margin-bottom: 0.5rem;
+      color: var(--text-main);
+    }
+
+    .card-snippet {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+      line-height: 1.3;
+    }
+
+    .card-meta {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid var(--border-color);
+      padding-top: 0.5rem;
+    }
+
+    .card-link {
+      color: var(--accent-color);
+      text-decoration: none;
+      font-weight: bold;
+    }
+
+    .loading, .error {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Alert & News Feed</h1>
+    <div class="status-bar">
+      <div id="last-updated">Updating...</div>
+      <div style="font-size:0.65rem; color: #38bdf8;">Auto-refreshes daily</div>
+    </div>
+  </header>
+
+  <nav>
+    <button class="active" onclick="switchCategory('all', this)">All News</button>
+    <button onclick="switchCategory('ai', this)">AI Breakthroughs</button>
+    <button onclick="switchCategory('sci-tech-india', this)">India Sci-Fi & Tech</button>
+    <button onclick="switchCategory('crime', this)">Crime & Cases</button>
+    <button onclick="switchCategory('disaster', this)">Cyclones & Disasters</button>
+  </nav>
+
+  <main>
+    <div class="controls">
+      <span id="article-count" style="font-size: 0.85rem; color: var(--text-muted);">Loading content...</span>
+      <button class="btn-refresh" onclick="manualRefresh()">Refresh Now</button>
+    </div>
+
+    <div id="feed-container" class="news-grid">
+      <div class="loading">Fetching latest global feeds...</div>
+    </div>
+  </main>
+
+  <script>
+    // RSS and Disaster API Configurations
+    const FEEDS = {
+      ai: "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent("https://news.google.com/rss/search?q=Artificial+Intelligence+OR+LLM+OR+GenAI&hl=en-US&gl=US&ceid=US:en"),
+      "sci-tech-india": "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent("https://news.google.com/rss/search?q=India+technology+OR+ISRO+OR+Indian+deeptech+OR+space+India&hl=en-IN&gl=IN&ceid=IN:en"),
+      crime: "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent("https://news.google.com/rss/search?q=crime+OR+cybercrime+OR+investigation+OR+Supreme+Court+verdict+India&hl=en-IN&gl=IN&ceid=IN:en"),
+      disaster: "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent("https://www.gdacs.org/xml/rss.xml")
+    };
+
+    let allArticles = [];
+    let currentCategory = 'all';
+
+    async function fetchCategory(categoryKey) {
+      try {
+        const response = await fetch(FEEDS[categoryKey]);
+        const data = await response.json();
+        if (data.status === 'ok') {
+          return data.items.map(item => ({
+            title: item.title,
+            link: item.link,
+            pubDate: new Date(item.pubDate),
+            snippet: item.description.replace(/<[^>]*>?/gm, '').substring(0, 140) + '...',
+            category: categoryKey,
+            source: item.author || 'Global Feed'
+          }));
+        }
+        return [];
+      } catch (err) {
+        console.error(`Failed loading ${categoryKey}:`, err);
+        return [];
+      }
+    }
+
+    async function loadAllFeeds() {
+      const container = document.getElementById('feed-container');
+      container.innerHTML = '<div class="loading">Loading news and alerts...</div>';
+
+      const results = await Promise.all([
+        fetchCategory('ai'),
+        fetchCategory('sci-tech-india'),
+        fetchCategory('crime'),
+        fetchCategory('disaster')
+      ]);
+
+      allArticles = results.flat().sort((a, b) => b.pubDate - a.pubDate);
+      
+      const now = new Date();
+      localStorage.setItem('last_news_refresh', now.getTime());
+      document.getElementById('last-updated').innerText = 'Updated: ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      renderArticles();
+    }
+
+    function renderArticles() {
+      const container = document.getElementById('feed-container');
+      const filtered = currentCategory === 'all' 
+        ? allArticles 
+        : allArticles.filter(a => a.category === currentCategory);
+
+      document.getElementById('article-count').innerText = `Showing ${filtered.length} articles`;
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="error">No news available for this category right now.</div>';
+        return;
+      }
+
+      container.innerHTML = filtered.map(item => `
+        <div class="card">
+          <div>
+            <div class="card-tag">${getCategoryLabel(item.category)}</div>
+            <h2 class="card-title">${item.title}</h2>
+            <p class="card-snippet">${item.snippet}</p>
+          </div>
+          <div class="card-meta">
+            <span>${item.pubDate.toLocaleDateString()}</span>
+            <a href="${item.link}" target="_blank" class="card-link">Read Full →</a>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function getCategoryLabel(cat) {
+      switch(cat) {
+        case 'ai': return '🤖 AI Breakthrough';
+        case 'sci-tech-india': return '🚀 India Sci-Tech';
+        case 'crime': return '⚖️ Crime & Legal';
+        case 'disaster': return '⚠️ Cyclone / Disaster';
+        default: return 'News';
+      }
+    }
+
+    function switchCategory(category, btn) {
+      currentCategory = category;
+      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderArticles();
+    }
+
+    function manualRefresh() {
+      loadAllFeeds();
+    }
+
+    // Daily Auto-Refresh Logic (Checks every hour; refreshes if > 24 hrs old)
+    function checkDailyRefresh() {
+      const lastRefresh = localStorage.getItem('last_news_refresh');
+      const now = new Date().getTime();
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+
+      if (!lastRefresh || (now - lastRefresh) > twentyFourHours) {
+        loadAllFeeds();
+      } else {
+        loadAllFeeds(); // Load fresh content whenever opened
+      }
+    }
+
+    // Set hourly check for background daily refresh
+    setInterval(checkDailyRefresh, 60 * 60 * 1000);
+
+    // Initial Load
+    window.addEventListener('DOMContentLoaded', checkDailyRefresh);
+  </script>
+</body>
+</html>
